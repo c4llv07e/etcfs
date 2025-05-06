@@ -13,7 +13,30 @@ static const struct super_operations etcfs_ops = {
 };
 #endif
 
-static int etcfs_fill_super(struct super_block *sb, strcut fc_context *fc) {
+static struct dentry *etcfs_lookup(struct inode *dir, struct dentry *dentry,
+				unsigned int flags) {
+	return dentry->d_parent;
+}
+
+static const struct inode_operations etcfs_dir_inode_operations = {
+	.lookup = etcfs_lookup,
+};
+
+static int etcfs_readdir(struct file *file, struct dir_context *ctx) {
+	if (!dir_emit_dots(file, ctx))
+		return 0;
+	if (!dir_emit(ctx, "a", 1, 2, 0))
+		return 0;
+	return 0;
+}
+
+static struct file_operations etcfs_dir_file_ops = {
+	.llseek = generic_file_llseek,
+	.read = generic_read_dir,
+	.iterate_shared = etcfs_readdir,
+};
+
+static int etcfs_fill_super(struct super_block *sb, struct fs_context *fs) {
 	struct inode *inode;
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
 	sb->s_blocksize = PAGE_SIZE;
@@ -34,6 +57,10 @@ static int etcfs_fill_super(struct super_block *sb, strcut fc_context *fc) {
 	mapping_set_unevictable(inode->i_mapping);
 	*/
 	simple_inode_init_ts(inode);
+
+	/* inode->i_op = &simple_dir_inode_operations; */
+	inode->i_op = &etcfs_dir_inode_operations;
+	inode->i_fop = &etcfs_dir_file_ops;
 
 	sb->s_root = d_make_root(inode);
 	if (!sb->s_root)
@@ -57,6 +84,7 @@ static int etcfs_init_fs_context(struct fs_context *fc) {
 }
 
 static struct file_system_type etcfs_fs_type = {
+	.owner = THIS_MODULE,
 	.name = "etcfs",
 	.fs_flags = FS_USERNS_MOUNT,
 	.init_fs_context = etcfs_init_fs_context,
