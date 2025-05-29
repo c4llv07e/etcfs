@@ -7,17 +7,8 @@
 #include <linux/dcache.h>
 #include <linux/mnt_idmapping.h>
 
-#define LEN(x) ((sizeof (x)) / (sizeof (*(x))))
-
-struct etcfs_file_elem {
-	char *path;
-	char *value;
-};
-
-struct etcfs_file_elem etcfs_files[] = {
-	{"a", "config file"},
-	{"b", "second file"},
-};
+#include "etcfs.h"
+#include "config.h"
 
 static const char *etcfs_find_content(const char *path) {
 	size_t i;
