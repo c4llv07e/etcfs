@@ -11,8 +11,6 @@
 static const struct super_operations etcfs_ops = {
 
 };
-#endif
-
 static struct dentry *etcfs_lookup(struct inode *dir, struct dentry *dentry,
 				unsigned int flags) {
 	return dentry->d_parent;
@@ -35,42 +33,52 @@ static struct file_operations etcfs_dir_file_ops = {
 	.read = generic_read_dir,
 	.iterate_shared = etcfs_readdir,
 };
+#endif
+
+static struct inode *etcfs_create_inode(struct super_block *sb, int mode) {
+	struct inode *inode;
+	inode = new_inode(sb);
+
+	if (!inode)
+		return NULL;
+
+	inode->i_ino = get_next_ino();
+	inode->i_sb = sb;
+	simple_inode_init_ts(inode);
+	inode_init_owner(&nop_mnt_idmap, inode, NULL, S_IFDIR);
+	return inode;
+}
 
 static int etcfs_fill_super(struct super_block *sb, struct fs_context *fs) {
 	struct inode *inode;
+	struct dentry *root;
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
 	sb->s_blocksize = PAGE_SIZE;
 	sb->s_blocksize_bits = PAGE_SHIFT;
 	sb->s_magic = ETCFS_MAGIC;
 	sb->s_time_gran = 1; /* I have no idea what is's doing */
 
-	inode = new_inode(sb);
-
+	inode = etcfs_create_inode(sb, S_IFDIR | 0555);
 	if (!inode)
 		return -ENOMEM;
 
-	inode->i_ino = get_next_ino();
-	inode_init_owner(&nop_mnt_idmap, inode, NULL, S_IFDIR);
-	inode->i_mapping->a_ops = &ram_aops;
-	/*
-	mapping_set_gfp_mask(inode->i_mapping, GFP_HIGHUSER);
-	mapping_set_unevictable(inode->i_mapping);
-	*/
-	simple_inode_init_ts(inode);
+	inode->i_op = &simple_dir_inode_operations;
+	inode->i_fop = &simple_dir_operations;
 
-	/* inode->i_op = &simple_dir_inode_operations; */
-	inode->i_op = &etcfs_dir_inode_operations;
-	inode->i_fop = &etcfs_dir_file_ops;
-
-	sb->s_root = d_make_root(inode);
-	if (!sb->s_root)
+	root = d_make_root(inode);
+	if (!root)
 		return -ENOMEM;
+	
+	sb->s_root = root;
 	return 0;
 }
 
 static int etcfs_get_tree(struct fs_context *fc) {
-	pr_debug("Get tree\n");
 	return get_tree_nodev(fc, etcfs_fill_super);
+}
+
+static void etcfs_kill_sb(struct super_block *sb) {
+	kill_litter_super(sb);
 }
 
 static struct fs_context_operations etcfs_context_ops = {
@@ -86,6 +94,7 @@ static int etcfs_init_fs_context(struct fs_context *fc) {
 static struct file_system_type etcfs_fs_type = {
 	.owner = THIS_MODULE,
 	.name = "etcfs",
+	.kill_sb = etcfs_kill_sb,
 	.fs_flags = FS_USERNS_MOUNT,
 	.init_fs_context = etcfs_init_fs_context,
 };
