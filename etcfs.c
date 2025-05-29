@@ -7,11 +7,35 @@
 #include <linux/dcache.h>
 #include <linux/mnt_idmapping.h>
 
+#define LEN(x) ((sizeof (x)) / (sizeof (*(x))))
+
+struct etcfs_file_elem {
+	char *path;
+	char *value;
+};
+
+struct etcfs_file_elem etcfs_files[] = {
+	{"a", "config file"},
+	{"b", "second file"},
+};
+
+static const char *etcfs_find_content(const char *path) {
+	size_t i;
+	for (i = 0; i < LEN(etcfs_files); ++i) {
+		if (strcmp(etcfs_files[i].path, path) == 0) {
+			return etcfs_files[i].value;
+		}
+	}
+	return NULL;
+}
+
 static ssize_t etcfs_file_read(struct file *file, char __user *buf,
 		size_t len, loff_t *offset) {
-	pr_debug("Reading file\n");
-	char msg[] = "Hello\n";
-	size_t msg_len = (sizeof msg);
+	const char *filepath = file->f_path.dentry->d_name.name;
+	pr_debug("Reading file %s\n", filepath);
+	const char *msg = etcfs_find_content(filepath);
+	if (msg == NULL) return -EINVAL;
+	size_t msg_len = strlen(msg);
 	if (*offset >= msg_len) return 0;
 	if (len > msg_len - *offset) len = msg_len - *offset;
 	if (copy_to_user(buf, msg + *offset, len)) return -EFAULT;
@@ -42,7 +66,8 @@ static struct inode *etcfs_create_inode(struct super_block *sb, int mode) {
 static struct dentry *etcfs_lookup(struct inode *dir, struct dentry *dentry,
 				unsigned int flags) {
 	pr_debug("Looking up %s...\n", dentry->d_name.name);
-	if (strcmp(dentry->d_name.name, "a") != 0) return ERR_PTR(-ENOENT);
+	const char *filepath = dentry->d_name.name;
+	if (etcfs_find_content(filepath) == NULL) return ERR_PTR(-ENOENT);
 	struct inode *inode;
 	inode = etcfs_create_inode(dir->i_sb, S_IFREG | 0444);
 	if (!inode)
@@ -61,8 +86,12 @@ static int etcfs_readdir(struct file *file, struct dir_context *ctx) {
 	if (!dir_emit_dots(file, ctx))
 		return 0;
 	if (ctx->pos == 2) {
-		dir_emit(ctx, "a", 1, 2, 0);
-		ctx->pos += 1;
+		size_t n;
+		for (n = 0; n < LEN(etcfs_files); ++n) {
+			struct etcfs_file_elem efile = etcfs_files[n];
+			dir_emit(ctx, efile.path, strlen(efile.path), 2, 0);
+		}
+		ctx->pos += LEN(etcfs_files);
 	}
 	return 0;
 }
