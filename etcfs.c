@@ -7,35 +7,25 @@
 #include <linux/dcache.h>
 #include <linux/mnt_idmapping.h>
 
-#if 0
-static const struct super_operations etcfs_ops = {
-
-};
-static struct dentry *etcfs_lookup(struct inode *dir, struct dentry *dentry,
-				unsigned int flags) {
-	return dentry->d_parent;
+static ssize_t etcfs_file_read(struct file *file, char __user *buf,
+		size_t len, loff_t *offset) {
+	pr_debug("Reading file\n");
+	char msg[] = "Hello\n";
+	size_t msg_len = (sizeof msg);
+	if (*offset >= msg_len) return 0;
+	if (len > msg_len - *offset) len = msg_len - *offset;
+	if (copy_to_user(buf, msg + *offset, len)) return -EFAULT;
+	*offset += len;
+	return len;
 }
 
-static const struct inode_operations etcfs_dir_inode_operations = {
-	.lookup = etcfs_lookup,
+static struct file_operations etcfs_file_fops = {
+	.owner = THIS_MODULE,
+	.read = etcfs_file_read,
 };
-
-static int etcfs_readdir(struct file *file, struct dir_context *ctx) {
-	if (!dir_emit_dots(file, ctx))
-		return 0;
-	if (!dir_emit(ctx, "a", 1, 2, 0))
-		return 0;
-	return 0;
-}
-
-static struct file_operations etcfs_dir_file_ops = {
-	.llseek = generic_file_llseek,
-	.read = generic_read_dir,
-	.iterate_shared = etcfs_readdir,
-};
-#endif
 
 static struct inode *etcfs_create_inode(struct super_block *sb, int mode) {
+	pr_debug("Creating inode\n");
 	struct inode *inode;
 	inode = new_inode(sb);
 
@@ -45,11 +35,49 @@ static struct inode *etcfs_create_inode(struct super_block *sb, int mode) {
 	inode->i_ino = get_next_ino();
 	inode->i_sb = sb;
 	simple_inode_init_ts(inode);
-	inode_init_owner(&nop_mnt_idmap, inode, NULL, S_IFDIR);
+	inode_init_owner(&nop_mnt_idmap, inode, NULL, mode);
 	return inode;
 }
 
+static struct dentry *etcfs_lookup(struct inode *dir, struct dentry *dentry,
+				unsigned int flags) {
+	pr_debug("Looking up %s...\n", dentry->d_name.name);
+	if (strcmp(dentry->d_name.name, "a") != 0) return ERR_PTR(-ENOENT);
+	struct inode *inode;
+	inode = etcfs_create_inode(dir->i_sb, S_IFREG | 0444);
+	if (!inode)
+		return ERR_PTR(-ENOMEM);
+	inode->i_fop = &etcfs_file_fops;
+	d_add(dentry, inode);
+	return NULL;
+}
+
+static const struct inode_operations etcfs_dir_inode_operations = {
+	.lookup = etcfs_lookup,
+};
+
+static int etcfs_readdir(struct file *file, struct dir_context *ctx) {
+	pr_debug("Readding dir\n");
+	if (!dir_emit_dots(file, ctx))
+		return 0;
+	if (ctx->pos == 2) {
+		dir_emit(ctx, "a", 1, 2, 0);
+		ctx->pos += 1;
+	}
+	return 0;
+}
+
+static struct file_operations etcfs_dir_file_ops = {
+	.open = dcache_dir_open,
+	.release = dcache_dir_close,
+	.llseek = dcache_dir_lseek,
+	.read = generic_read_dir,
+	.iterate_shared = etcfs_readdir,
+	.fsync = noop_fsync,
+};
+
 static int etcfs_fill_super(struct super_block *sb, struct fs_context *fs) {
+	pr_debug("Filling super\n");
 	struct inode *inode;
 	struct dentry *root;
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
@@ -62,8 +90,8 @@ static int etcfs_fill_super(struct super_block *sb, struct fs_context *fs) {
 	if (!inode)
 		return -ENOMEM;
 
-	inode->i_op = &simple_dir_inode_operations;
-	inode->i_fop = &simple_dir_operations;
+	inode->i_op = &etcfs_dir_inode_operations ;
+	inode->i_fop = &etcfs_dir_file_ops;
 
 	root = d_make_root(inode);
 	if (!root)
@@ -74,10 +102,12 @@ static int etcfs_fill_super(struct super_block *sb, struct fs_context *fs) {
 }
 
 static int etcfs_get_tree(struct fs_context *fc) {
+	pr_debug("Getting tree\n");
 	return get_tree_nodev(fc, etcfs_fill_super);
 }
 
 static void etcfs_kill_sb(struct super_block *sb) {
+	pr_debug("Killing super\n");
 	kill_litter_super(sb);
 }
 
