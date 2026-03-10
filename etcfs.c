@@ -110,13 +110,13 @@ static int etcfs_fill_super(struct super_block *sb, struct fs_context *fs) {
 	if (!inode)
 		return -ENOMEM;
 
-	inode->i_op = &etcfs_dir_inode_operations ;
+	inode->i_op = &etcfs_dir_inode_operations;
 	inode->i_fop = &etcfs_dir_file_ops;
 
 	root = d_make_root(inode);
 	if (!root)
 		return -ENOMEM;
-	
+
 	sb->s_root = root;
 	return 0;
 }
@@ -128,7 +128,7 @@ static int etcfs_get_tree(struct fs_context *fc) {
 
 static void etcfs_kill_sb(struct super_block *sb) {
 	pr_debug("Killing super\n");
-	kill_litter_super(sb);
+	kill_anon_super(sb);
 }
 
 static struct fs_context_operations etcfs_context_ops = {
