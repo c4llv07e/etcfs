@@ -10,11 +10,11 @@
 #include "etcfs.h"
 #include "config.h"
 
-static const char *etcfs_find_content(const char *path) {
+static struct etcfs_file_elem *etcfs_find_content(const char *path) {
 	size_t i;
 	for (i = 0; i < LEN(etcfs_files); ++i) {
 		if (strcmp(etcfs_files[i].path, path) == 0) {
-			return etcfs_files[i].value;
+			return &etcfs_files[i];
 		}
 	}
 	return NULL;
@@ -24,14 +24,9 @@ static ssize_t etcfs_file_read(struct file *file, char __user *buf,
 		size_t len, loff_t *offset) {
 	const char *filepath = file->f_path.dentry->d_name.name;
 	pr_debug("Reading file %s\n", filepath);
-	const char *msg = etcfs_find_content(filepath);
-	if (msg == NULL) return -EINVAL;
-	size_t msg_len = strlen(msg);
-	if (*offset >= msg_len) return 0;
-	if (len > msg_len - *offset) len = msg_len - *offset;
-	if (copy_to_user(buf, msg + *offset, len)) return -EFAULT;
-	*offset += len;
-	return len;
+	struct etcfs_file_elem *elem = etcfs_find_content(filepath);
+	if (elem == NULL) return -EINVAL;
+	return elem->read(file, buf, len, offset, elem->data);
 }
 
 static struct file_operations etcfs_file_fops = {

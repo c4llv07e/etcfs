@@ -5,7 +5,9 @@
 
 struct etcfs_file_elem {
 	char *path;
-	char *value;
+	ssize_t (*read)(struct file *file, char __user *buf,
+		size_t len, loff_t *offset, void *data);
+	void *data;
 };
 
 #endif /* ETCFS_HEADER_INC */
